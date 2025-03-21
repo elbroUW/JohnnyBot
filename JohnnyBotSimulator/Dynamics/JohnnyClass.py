@@ -49,9 +49,9 @@ class JohnnyBot:
         self.t_span = (0, 20)
         self.currtime = 0
 
-        # Controller gain parameters for linear and angular velocities
-        self.kv = 0.1   # Proportional gain for linear velocity
-        self.kw = 1.5   # Proportional gain for angular velocity
+        
+        self.kv = 0.1   # Proportional gain for distance
+        self.kw = 1.5   # Proportional gain for heading
 
         # Maximum forward speed limit
         self.maxspeed = 10
@@ -116,7 +116,7 @@ class JohnnyBot:
 
         # Extract necessary values
         theta_dot = self.control[0]    # Angular velocity command
-        v_dot = self.control[1]        # Linear velocity command
+        v_dot = self.control[1]        # Linear accelra command
         theta = state[2]
 
         # The "v" in the state derivative is simply the commanded v_dot here
@@ -161,16 +161,17 @@ class JohnnyBot:
         theta_dot = self.control[0]    # Angular velocity command
         v_dot = self.control[1]        # Linear velocity command
         theta = state[2]
+        v = state[3]
 
         print("theta = ", theta)
 
         
         # The "v" in the state derivative is simply the commanded v_dot here
-        v = v_dot
+        #v = v_dot
 
         # Compute derivatives of the state based on the current orientation and velocity
-        x_dot = v * jnp.cos(theta)
-        y_dot = v * jnp.sin(theta)
+        x_dot = v_dot * jnp.cos(theta)
+        y_dot = v_dot * jnp.sin(theta)
 
 
         # Construct and return the state derivative vector
