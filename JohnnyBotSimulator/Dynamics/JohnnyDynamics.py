@@ -19,7 +19,7 @@ class JohnnyDynamics:
         self.control = jnp.array([0, 0])  # Control input [x_dot_dot, y_dot_dot]
         pass
 
-    def double_integrator(self, t,state, control):
+    def double_integrator(self, t, state, control):
         """
         Computes the state derivative x_dot = f(x, u), where x is the state and u is the control.
         Inputs:
@@ -62,6 +62,8 @@ class JohnnyDynamics:
 
         
         return state_derivative
+    
+    
 
     def dubin_Car_Dynamics(self, t, state):
         """

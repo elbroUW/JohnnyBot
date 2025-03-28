@@ -5,6 +5,7 @@ import numpy as np
 from scipy.integrate import solve_ivp
 import sys
 import os
+import cvxpy as cp
 
 # Go one level up to the parent directory of Project
 parent_dir = os.path.abspath(os.path.join(os.getcwd(), '..')) 
@@ -25,7 +26,7 @@ class JohnnyController:
         self.dt = 0.01  # Time step
         self.t0 = 0  # Initial time
         self.tf = 10  # Final time
-        self.state0 = jnp.array([0, 0, 0, 0])  # Initial state [x, y, x_dot, y_dot]
+        self.state0 = jnp.array([0, 0, 1, 0])  # Initial state [x, y, x_dot, y_dot]
         self.state = self.state0
         self.desired_state = jnp.array([10, 10, 0, 0])  # Desired state [x, y, x_dot, y_dot]
         self.states = []  # State trajectory
@@ -33,11 +34,11 @@ class JohnnyController:
         self.controls = []  # Control trajectory
         self.time = []  # Time trajectory
 
-        self.max_velocity = 1
-        self.min_velocity = -1
+        self.max_velocity = 2
+        self.min_velocity = -2
 
-        self.max_acceleration = 1
-        self.min_acceleration = -1
+        self.max_acceleration = 2
+        self.min_acceleration = -2
 
     def control_Simple(self):
         # Calculate the control input using PD control
@@ -88,7 +89,7 @@ class JohnnyController:
         Solve a convex optimization problem to compute the optimal state and control trajectories
         for a double integrator system using Q and R matrices.
         """
-        import cvxpy as cp
+        
 
         # Define system matrices
         A = np.array([[0, 0, 1, 0],
@@ -181,7 +182,7 @@ class JohnnyController:
         states = cp.Variable((4, time_horizon))  # States [x, y, x_dot, y_dot]
 
         # Define Q and R matrices
-        Q = np.diag([1, 1, 1, 1])  # Penalize position error more than velocity error
+        Q = np.diag([5, 5, 1, 1])  # Penalize position error more than velocity error
         R = np.diag([0.1, 0.1])  # Penalize control effort
 
         # Define constraints list
@@ -195,15 +196,6 @@ class JohnnyController:
             constraints.append(states[:, t + 1] == states[:, t] + (A @ states[:, t] + B @ us[:, t]) * self.dt)
 
         
-       # Obstacle avoidance constraints (Using SOCP)
-        epsilon = 0  # Safety margin for numerical stability
-        for obs in self.plotter.obstacles:
-            obs_center = np.array([obs[0], obs[1]])  # (x, y) center
-            obs_radius = obs[2] + epsilon  # Add small margin
-            for t in range(time_horizon):
-                constraints.append(
-                    cp.SOC(obs_radius, states[0:2, t] - obs_center)
-                )
         # Control input constraints
         constraints.append(us[0, :] <= self.max_acceleration)
         constraints.append(us[0, :] >= self.min_acceleration)
@@ -228,6 +220,201 @@ class JohnnyController:
             self.controls = us.value.T  
         else:
             print("Optimization failed:", prob.status)
+
+
+    def CVX_controller_MPC(self):
+        """
+
+        """
+        self.states.append(self.state0)
+        self.controls.append(self.control)
+
+        # Define system matrices
+        A = np.array([[0, 0, 1, 0],
+                      [0, 0, 0, 1],
+                      [0, 0, 0, 0],
+                      [0, 0, 0, 0]])
+        
+        B = np.array([[0, 0],
+                      [0, 0],
+                      [1, 0],
+                      [0, 1]])
+        
+        # Time horizon
+        MPC_horizon = 30
+        time_horizon = int(self.tf / self.dt)
+
+        self.time = np.linspace(self.t0, self.tf, time_horizon)
+
+        self.desired_states = np.tile(self.desired_state, (time_horizon, 1))
+
+        # Define optimization variables
+        us = cp.Variable((2, MPC_horizon - 1))  # Control inputs [x_dot_dot, y_dot_dot]
+        states = cp.Variable((4, MPC_horizon))  # States [x, y, x_dot, y_dot]
+
+        state1 = cp.Parameter(4)
+
+
+        As = cp.Parameter((4, 4)) # for later
+        As.project_and_assign(A)
+        Bs = cp.Parameter((4, 2)) # for later  
+        Bs.project_and_assign(B)
+
+
+        # Define Q and R matrices
+        Q = np.diag([2, 2, 1, 1])  # Penalize position error more than velocity error
+        R = np.diag([0.1, 0.1])  # Penalize control effort
+
+        # Define constraints list
+        constraints = []
+
+        # Initial state constraint
+        constraints.append(states[:, 0] == state1)
+
+        # Dynamics constraints
+        for t in range(MPC_horizon - 1):
+            constraints.append(states[:, t + 1] == states[:, t] + (A @ states[:, t] + B @ us[:, t]) * self.dt)
+
+        # Control input constraints
+        constraints.append(us[0, :] <= self.max_acceleration)
+        constraints.append(us[0, :] >= self.min_acceleration)
+        constraints.append(us[1, :] <= self.max_acceleration)
+        constraints.append(us[1, :] >= self.min_acceleration)
+
+        # Define the objective function (vectorized)
+        objective = cp.Minimize(
+            cp.sum([cp.quad_form(states[:, t] - self.desired_states[t, :], Q) for t in range(MPC_horizon)]) +
+            cp.sum([cp.quad_form(us[:, t], R) for t in range(MPC_horizon - 1)])
+        )
+
+        # Solve the optimization problem
+        prob = cp.Problem(objective, constraints)
+
+        # Solve the problem iteratively
+        for i in range(time_horizon-1):
+
+            new_state = self.states[-1]
+            state1.project_and_assign(new_state)
+
+            print(state1.value)
+            
+            # Solve the optimization problem
+            result = prob.solve()
+
+            # Check if the problem was solved successfully
+            if prob.status == cp.OPTIMAL:
+                print(f"Step {i}: Optimization successful!")
+                print("Optimal cost:", result)
+
+                # Append the first state and control input to the trajectories
+                self.states.append(states.value[:, 1])  # First state in the horizon
+                self.controls.append(us.value[:, 0])  # First control input in the horizon
+            
+            else:
+                print(f"Step {i}: Optimization failed:", prob.status)
+                break
+
+
+
+    def CVX_controller_MPC_Experiments(self):
+        """
+
+        """
+        self.states.append(self.state0)
+        self.controls.append(self.control)
+
+        # Define system matrices
+        A = np.array([[0, 0, 1, 0],
+                      [0, 0, 0, 1],
+                      [0, 0, 0, 0],
+                      [0, 0, 0, 0]])
+        
+        B = np.array([[0, 0],
+                      [0, 0],
+                      [1, 0],
+                      [0, 1]])
+        
+        # Time horizon
+        MPC_horizon = 30
+        time_horizon = int(self.tf / self.dt)
+
+        self.time = np.linspace(self.t0, self.tf, time_horizon)
+
+        self.desired_states = np.tile(self.desired_state, (time_horizon, 1))
+
+        # Define optimization variables
+        us = cp.Variable((2, MPC_horizon - 1))  # Control inputs [x_dot_dot, y_dot_dot]
+        states = cp.Variable((4, MPC_horizon))  # States [x, y, x_dot, y_dot]
+
+        state1 = cp.Parameter(4)
+
+
+
+        As = cp.Parameter((4, 4)) # for later
+        As.project_and_assign(A)
+        Bs = cp.Parameter((4, 2)) # for later  
+        Bs.project_and_assign(B)
+
+
+        # Define Q and R matrices
+        Q = np.diag([2, 2, 1, 1])  # Penalize position error more than velocity error
+        R = np.diag([0.1, 0.1])  # Penalize control effort
+
+        # Define constraints list
+        constraints = []
+
+        # Initial state constraint
+        constraints.append(states[:, 0] == state1)
+
+        # Dynamics constraints
+        for t in range(MPC_horizon - 1):
+            constraints.append(states[:, t + 1] == states[:, t] + (A @ states[:, t] + B @ us[:, t]) * self.dt)
+            
+        
+
+        # Control input constraints
+        constraints.append(us[0, :] <= self.max_acceleration)
+        constraints.append(us[0, :] >= self.min_acceleration)
+        constraints.append(us[1, :] <= self.max_acceleration)
+        constraints.append(us[1, :] >= self.min_acceleration)
+       
+       
+
+        # Define the objective function (vectorized)
+        objective = cp.Minimize(
+            cp.sum([cp.quad_form(states[:, t] - self.desired_states[t, :], Q) for t in range(MPC_horizon)]) +
+            cp.sum([cp.quad_form(us[:, t], R) for t in range(MPC_horizon - 1)])
+        )
+
+        # Solve the optimization problem
+        prob = cp.Problem(objective, constraints)
+
+        # Solve the problem iteratively
+        for i in range(time_horizon-1):
+
+            new_state = self.states[-1]
+            state1.project_and_assign(new_state)
+             # b CBF constraint
+            print(state1.value)
+            
+            # Solve the optimization problem
+            result = prob.solve()
+
+            # Check if the problem was solved successfully
+            if prob.status == cp.OPTIMAL:
+                print(f"Step {i}: Optimization successful!")
+                print("Optimal cost:", result)
+
+                # Append the first state and control input to the trajectories
+                self.states.append(states.value[:, 1])  # First state in the horizon
+                self.controls.append(us.value[:, 0])  # First control input in the horizon
+            
+            else:
+                print(f"Step {i}: Optimization failed:", prob.status)
+                break
+
+
+        
             
     def plot(self): 
         print("plotting")
@@ -239,3 +426,5 @@ class JohnnyController:
         self.plotter.plot_trajectory()
         plt.show()
 
+
+        

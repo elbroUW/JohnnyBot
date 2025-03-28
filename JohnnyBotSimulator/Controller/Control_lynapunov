@@ -1,0 +1,78 @@
+
+def barrier_function(state, r=1):
+    x, y, theta, v = state
+    return x**2 + y**2 - r**2
+
+
+def control_lyapunov_function_1(state, goal=[3.5,0]):
+    x, y, _, _ = state
+    xg, yg = goal
+    return (x - xg)**2 + (y - yg)**2
+
+def control_lyapunov_function_2(state, goal=[3.5,0]):
+    x, y, theta, _ = state
+    xg, yg = goal
+    return (theta - jnp.arctan2(yg - y, xg - x))**2
+
+
+    
+def lie_derivative(func, vector_field_func, state):
+    '''
+    func: a function that takes in a state and returns a scalar value.
+          i.e., func(state) = scalar
+    vector_field_func: a function that takes in a state and returns a
+                      vector/matrix. i.e., func(state) = vector/matrix
+    state: an array describing the state which is the input to func and
+          vector_field_func
+    '''
+
+    func_gradx = jax.jacobian(func)
+    #func_gradu = jax.jacobian(vector_field_func, argnums=1)
+    
+    lie = jnp.matmul(func_gradx(state).T, vector_field_func(state))
+     
+    return lie
+
+
+    #gradu = func_gradu(state, control)  
+    pass
+    ######################
+test_state = jnp.array([-1.0, 2.0, 0.1, 1.0])
+
+lie_derivative(barrier_function, dynamics.drift_dynamics, test_state)
+
+
+
+def control_constraint_degree_2(h, dynamics, state, class_K_funcs):
+    '''
+    h: a function that takes in a state and returns a scalar value.
+          i.e., h(state) = scalar
+    dynamics: the DynamicallyExtendedUnicycle class defined above
+    state: an array describing the state which is the input to func and
+          vector_field_func
+    class_K_funcs: a 2-list of class K function [alpha_func_1, alpha_func_2]
+
+    Compute the coefficients for the CBF/CLF inequality terms, assuming all the terms are moved to the LHS
+
+    Lf2h(z) + LgLfh(z)u + Lfa1h(z) + a2_term
+
+
+    Returns:
+    Lf2h
+    LgLfh
+    Lfa1h
+    a2_term
+    '''
+    Lfh_func = lambda state: lie_derivative(h, dynamics.drift_dynamics, state)
+    Lfh = lie_derivative(h, dynamics.drift_dynamics, state)
+
+    alpha1, alpha2 =  class_K_funcs
+    alpha1_h_func = lambda state: alpha1(h(state))
+    
+    Lf2h = lie_derivative(Lfh_func, dynamics.drift_dynamics, state)
+    LgLfh = lie_derivative(Lfh_func, dynamics.control_matrix, state)
+    Lfa1h = lie_derivative(alpha1_h_func, dynamics.drift_dynamics, state)
+    a2_term = alpha2(Lfh + alpha1(h(state)))
+
+    return Lf2h, LgLfh, Lfa1h, a2_term
+
