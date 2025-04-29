@@ -17,6 +17,16 @@ class JohnnyDynamics:
 
         self.state = jnp.array([0, 0, 0, 0])  # State vector [x, y, x_dot, y_dot]
         self.control = jnp.array([0, 0])  # Control input [x_dot_dot, y_dot_dot]
+
+        self.A = np.array([[0, 0, 1, 0],
+                      [0, 0, 0, 1],
+                      [0, 0, 0, 0],
+                      [0, 0, 0, 0]])
+        
+        self.B = np.array([[0, 0],
+                      [0, 0],
+                      [1, 0],
+                      [0, 1]])
         pass
 
     def double_integrator(self, t, state, control):
@@ -46,20 +56,7 @@ class JohnnyDynamics:
         state_derivative = A @ state + B @ control
         """
 
-        A = jnp.array([[0, 0, 1, 0],
-                       [0, 0, 0, 1],
-                       [0, 0, 0, 0],
-                       [0, 0, 0, 0]])
-        
-        B = jnp.array([[0, 0],
-                       [0, 0],
-                       [1, 0],
-                       [0, 1]])
-        
-        state_derivative = A @ state + B @ control
-        #print("State derivative: ")
-        #print(state_derivative)
-
+        state_derivative = self.A @ state + self.B @ control
         
         return state_derivative
     

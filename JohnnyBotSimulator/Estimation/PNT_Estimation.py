@@ -1,170 +1,148 @@
-import matplotlib.pyplot as plt
 import numpy as np
-import sympy as sym
-from scipy.integrate import solve_ivp
-from scipy import integrate
-import jax
 import jax.numpy as jnp
-import cvxpy as cp
-from jax.typing import ArrayLike
-from jax import jit
-import random as rand
-import plotly.graph_objects as go
-import time 
+import sys
+import os
+
+
+# Go one level up to the parent directory of Project
+parent_dir = os.path.abspath(os.path.join(os.getcwd(), '..')) 
+sys.path.append(parent_dir)
+from Dilution_of_Precision import *
+from Plotting.Estimation_plotting import *
 
 class PNT_Estimation:
+    """
+    A class for Position, Navigation, and Timing (PNT) estimation using noisy sensor data.
+    """
 
-    def generate_noisy_distances(sensor_positions, true_position, noise_std):
+    def __init__(self, sensor_positions, noise_std=1.0, max_iterations=100, tolerance=1e-6):
         """
-        Generate simulated noisy distance measurements from sensors to an object.
+        Initialize the PNT_Estimation class.
 
-        Parameters:
-        - sensor_positions: numpy array of shape (m, 3), positions of m sensors.
-        - true_position: numpy array of shape (3,), true position of the object.
-        - noise_std: float or numpy array of shape (m,), standard deviation of Gaussian noise.
+        Args:
+            sensor_positions (np.ndarray): Array of sensor positions with shape (m, 3).
+            noise_std (float): Standard deviation of Gaussian noise for distance measurements.
+            max_iterations (int): Maximum number of iterations for gradient descent.
+            tolerance (float): Convergence threshold for gradient descent.
+        """
+        self.sensor_positions = np.array(sensor_positions)
+        self.noise_std = noise_std
+        self.max_iterations = max_iterations
+        self.tolerance = tolerance
+        self.plotter = EstimationPlotting()
+
+    def generate_noisy_distances(self, true_position):
+        """
+        Generate noisy distance measurements from sensors to the true position.
+
+        Args:
+            true_position (np.ndarray): True position of the object (3D).
 
         Returns:
-        - noisy_distances: numpy array of shape (m,), simulated noisy distance measurements.
+            np.ndarray: Noisy distance measurements from each sensor.
         """
-        #print(true_position)
-        #print(sensor_positions)
-        #print(sensor_positions - true_position)
-
-        # Calculate true distances from each sensor to the object
-        true_distances = jnp.linalg.norm(sensor_positions - true_position, axis=1)
-
-        # Generate Gaussian noise
-        if isinstance(noise_std, (float, int)):
-            noise = np.random.normal(0, noise_std, size=true_distances.shape)
-        else:
-            noise = np.random.normal(0, noise_std)
-
-        # Add noise to the true distances
+        true_distances = np.linalg.norm(self.sensor_positions - true_position, axis=1)
+        noise = np.random.normal(0, self.noise_std, size=true_distances.shape)
         noisy_distances = true_distances + noise
-        #print(noisy_distances)
         return noisy_distances
 
-    def compute_distances(sensor_positions, object_position):
-        """
-        Compute the Euclidean distances from an object to each sensor.
-
-        Parameters:
-        - sensor_positions: numpy array of shape (m, n), positions of m sensors in n-dimensional space.
-        - object_position: numpy array of shape (n,), position of the object in n-dimensional space.
-
-        Returns:
-        - distances: numpy array of shape (m,), distances from the object to each sensor.
-        """
-        # Calculate distances
-        distances = np.linalg.norm(sensor_positions - object_position, axis=1)
-        return distances
-
-
-
-
-    def gradient_descent_position_estimation(sensor_positions, measured_distances, initial_guess,
-                                            max_iterations=100, tolerance=1e-6):
+    def gradient_descent_position_estimation(self, measured_distances, initial_guess):
         """
         Estimate the object's position using gradient descent.
-        
-        Parameters:
-        - sensor_positions: numpy array of shape (m, 3)
-        - measured_distances: numpy array of shape (m,)
-        - initial_guess: numpy array of shape (3,)
-        - max_iterations: int, maximum number of iterations
-        - tolerance: float, convergence threshold
-        
+
+        Args:
+            measured_distances (np.ndarray): Noisy distance measurements from sensors.
+            initial_guess (np.ndarray): Initial guess for the object's position (3D).
+
         Returns:
-        - estimated_position: numpy array of shape (3,), estimated object position
+            np.ndarray: Estimated position of the object (3D).
         """
         x = initial_guess.copy()
-        m = sensor_positions.shape[0]
-    
-        
-        estm_pos = []
-        for iteration in range(max_iterations):
-            # Initialize gradient
-            a = []
+        m = self.sensor_positions.shape[0]
+
+        for iteration in range(self.max_iterations):
             A = np.zeros((m, 3))
             d = np.zeros(m)
+
             for i in range(m):
-                s_i = sensor_positions[i]
+                s_i = self.sensor_positions[i]
                 r_i = measured_distances[i]
-                
-                # Vector from sensor to current estimate
-                #print("x: ", x)
-                #print("s_i", s_i)
                 diff = x - s_i
                 distance = np.linalg.norm(diff)
-                #print(distance)
-                
-                # Avoid division by zero
+
                 if distance == 0:
-                    print("bad zero")
-                    continue  # Or handle appropriately
-                
-                
-                # Residual
-                f_i = r_i - distance
-                #print("\ndi:\n", f_i)
-                
-                d[i] = f_i
-                
-                # Unit vector
-                u_i = diff / distance
-                #print(u_i)
-                
-                A[i] = u_i
+                    continue  # Avoid division by zero
 
-            
+                # Residual and unit vector
+                d[i] = r_i - distance
+                A[i] = diff / distance
+
+            # Solve the least squares problem
             ATA = A.T @ A
-        
-            A_plus_alt = np.linalg.inv(ATA) @ A.T
+            try:
+                A_plus = np.linalg.inv(ATA) @ A.T
+            except np.linalg.LinAlgError:
+                print("Singular matrix encountered during gradient descent.")
+                return x
 
-            # Compute estimated position
-            estimated_position = A_plus_alt @ d
+            delta_x = A_plus @ d
+            x_new = x + delta_x
 
-            # Update position estimate
-            x_new = x + estimated_position   # Negative gradient since we are minimizing
-
-        
             # Check for convergence
-            if np.linalg.norm(x_new - x) < tolerance:
-                print(f"Converged in {iteration + 1} iterations.")
-                return x_new #cost_history, residuals, estm_pos, A
-            
-            # Update estimate
+            if np.linalg.norm(x_new - x) < self.tolerance:
+                #print(f"Converged in {iteration + 1} iterations.")
+                return x_new
+
             x = x_new
-            
 
-        print(x)
-        #print("Maximum iterations reached without convergence.")
-        return x #cost_history, residuals, estm_pos, A
+        print("Maximum iterations reached without convergence.")
+        return x
 
+    def estimate_position(self, true_position, initial_guess):
+        """
+        Estimate the object's position given a true position and an initial guess.
 
-    def give_noisy_pos_est(state, initial_guess, sensor_Pos, noise_std):
-        x,y,_,_ = state
-        x_1, y_1,_,_ = initial_guess
-        Pos_true = np.array([x,y,0])
-        guess = jnp.array([x_1, y_1,0])
-        
-        noisy_distances = generate_noisy_distances(sensor_Pos, Pos_true, noise_std)
+        Args:
+            true_position (np.ndarray): True position of the object (3D).
+            initial_guess (np.ndarray): Initial guess for the object's position (3D).
 
-        est_pos= gradient_descent_position_estimation(sensor_Pos, noisy_distances,guess ,
-                                        max_iterations=1000, tolerance=1e-6)
-        
-        
-        est_state = jnp.array([est_pos[0], est_pos[1], state[2], state[3]])
+        Returns:
+            dict: A dictionary containing:
+                - "true_position": The true position of the object.
+                - "noisy_distances": The noisy distance measurements.
+                - "estimated_position": The estimated position of the object.
+        """
+        true_position = np.array(true_position)
+        initial_guess = np.array(initial_guess)
 
-        return est_state
+        # Generate noisy distances
+        noisy_distances = self.generate_noisy_distances(true_position)
 
+        # Estimate position using gradient descent
+        estimated_position = self.gradient_descent_position_estimation(noisy_distances, initial_guess)
 
-    # add noise to the angle 
-    def give_noisy_angle_est(state, noise_std):
-        x,y,theta,omega = state
-        angle_noisy = theta + np.random.normal(0, noise_std)
+        return estimated_position[0:2]
+    
+    def estimate_positions(self, true_position, initial_guess, num_samples):
+        """
+        Estimate multiple positions given true positions and an initial guess.
 
-        return jnp.array([x,y,angle_noisy,omega])
+        Args:
+            true_positions (list of np.ndarray): List of true positions of the object (3D).
+            initial_guess (np.ndarray): Initial guess for the object's position (3D).
+            num_samples (int): Number of samples to generate.
+
+        Returns:
+            list: A list of dictionaries containing:
+                - "true_position": The true position of the object.
+                - "noisy_distances": The noisy distance measurements.
+                - "estimated_position": The estimated position of the object.
+        """
+        results = []
+        for i in range(num_samples):
+            result = self.estimate_position(true_position, initial_guess)
+            results.append(result)
+        return results
 
 
 
