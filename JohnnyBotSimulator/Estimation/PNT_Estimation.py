@@ -7,7 +7,7 @@ import os
 # Go one level up to the parent directory of Project
 parent_dir = os.path.abspath(os.path.join(os.getcwd(), '..')) 
 sys.path.append(parent_dir)
-from Dilution_of_Precision import *
+#from Dilution_of_Precision import *
 from Plotting.Estimation_plotting import *
 
 class PNT_Estimation:
@@ -15,7 +15,9 @@ class PNT_Estimation:
     A class for Position, Navigation, and Timing (PNT) estimation using noisy sensor data.
     """
 
-    def __init__(self, sensor_positions, noise_std=1.0, max_iterations=100, tolerance=1e-6):
+    def __init__(self, sensor_positions=np.array([[10,0,0],
+                                                 [0,10,0],
+                                                 [-5,-5,0]]), noise_std=1.0, max_iterations=100, tolerance=1e-6):
         """
         Initialize the PNT_Estimation class.
 
@@ -89,12 +91,12 @@ class PNT_Estimation:
             x_new = x + delta_x
 
             # Check for convergence
+            #print("x_new - x" , x_new - x)
             if np.linalg.norm(x_new - x) < self.tolerance:
                 #print(f"Converged in {iteration + 1} iterations.")
                 return x_new
 
-            x = x_new
-
+            x= x_new
         print("Maximum iterations reached without convergence.")
         return x
 

@@ -19,6 +19,7 @@ class EstimationPlotting:
         ax.set_title("Measurements")
         ax.set_xlabel("Measurement Number")
         ax.set_ylabel("X Position")
+        ax.set_ylim(-10, 10)
 
        
         self.num_tests = len(self.true_position)
@@ -38,7 +39,7 @@ class EstimationPlotting:
         ax.set_title("Measurements")
         ax.set_xlabel("Measurement Number")
         ax.set_ylabel("Y Position")
-
+        ax.set_ylim(-10, 10)
         true_positions = np.tile(self.true_position, (self.measurement_number.shape[0], 1))
         
 

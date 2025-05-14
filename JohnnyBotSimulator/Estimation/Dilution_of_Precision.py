@@ -8,7 +8,7 @@ class DilutionOfPrecision:
     Class to calculate and plot the Dilution of Precision (DOP) for a given set of sensors.
     """
 
-    def __init__(self, sensors, bounds=None, grid_resolution=5, norm=True, invert_color=False, max_color=30):
+    def __init__(self, sensors, bounds=None, grid_resolution=1, norm=True, invert_color=False, max_color=30):
         """
         Initialize the DOP class with sensor positions and configuration options.
         Args:
@@ -19,7 +19,7 @@ class DilutionOfPrecision:
             invert_color (bool): Whether to invert the color scale. Default is False.
         """
         self.sensors = np.array(sensors)
-        self.bounds = bounds if bounds else (-20, 20, -20, 20, 0, 10)
+        self.bounds = bounds if bounds else (-20, 20, -30, 30, -5, 20)
         self.grid_resolution = grid_resolution
         self.norm = norm
         self.invert_color = invert_color
@@ -223,8 +223,8 @@ class DilutionOfPrecision:
         """
         G = self.calculate_geometry_matrix(point)
         pdop, hdop, vdop = self.calculate_dop_values(G)
-        return pdop, hdop, vdop
-    
+        return hdop
+        
     def plot_HDOP_Flatgrid(self, dot_size=100): 
         """
         Plot the HDOP values on a 2D plane (z = 0) using a 2D scatter plot.

@@ -11,7 +11,7 @@ import cvxpy as cp
 parent_dir = os.path.abspath(os.path.join(os.getcwd(), '..')) 
 sys.path.append(parent_dir)
 
-from Estimation.PNT_Estimation import *
+#from Estimation.PNT_Estimation import *
 from Dynamics.JohnnyDynamics import *
 from Plotting.Plotting import *
 
@@ -20,7 +20,7 @@ class JohnnyController:
         self.kp = 1 # Proportional gain
         self.kd = .8 # Derivative gain
         self.control = jnp.array([0, 0])  # Control input [x_dot_dot, y_dot_dot]
-        self.estimator = PNT_Estimation()  # Estimator object
+        #self.estimator = PNT_Estimation()  # Estimator object
         self.dynamics = JohnnyDynamics()
         self.plotter = Plotting()
         self.dt = 0.01  # Time step

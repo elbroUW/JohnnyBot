@@ -20,7 +20,7 @@ class JohnnyController:
         self.kp = 1  # Proportional gain
         self.kd = 0.8  # Derivative gain
         self.control = jnp.array([0, 0])  # Control input [x_dot_dot, y_dot_dot]
-        self.estimator = PNT_Estimation()  # Estimator object
+        #self.estimator = PNT_Estimation()  # Estimator object
         self.dynamics = JohnnyDynamics()
         self.plotter = Plotting()
         self.lightsource = []
