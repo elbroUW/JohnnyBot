@@ -353,6 +353,9 @@ class DilutionOfPrecision:
 
         return x_flat, y_flat, color_val, hdop_flat, x_max, x_min, y_max, y_min, z_fixed
 
+        def moving_sensor2(self, movement_matrix, steps, rows=2):
+        """
+        
 
 
 
